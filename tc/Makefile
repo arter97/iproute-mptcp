@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0
 TCOBJ= tc.o tc_qdisc.o tc_class.o tc_filter.o tc_util.o tc_monitor.o \
        tc_exec.o m_police.o m_estimator.o m_action.o m_ematch.o \
-       emp_ematch.yacc.o emp_ematch.lex.o
+       emp_ematch.tab.o emp_ematch.lex.o
 
 include ../config.mk
 
@@ -39,6 +39,7 @@ TCMODULES += q_drr.o
 TCMODULES += q_qfq.o
 TCMODULES += m_gact.o
 TCMODULES += m_mirred.o
+TCMODULES += m_mpls.o
 TCMODULES += m_nat.o
 TCMODULES += m_pedit.o
 TCMODULES += m_ife.o
@@ -48,9 +49,12 @@ TCMODULES += m_csum.o
 TCMODULES += m_simple.o
 TCMODULES += m_vlan.o
 TCMODULES += m_connmark.o
+TCMODULES += m_ctinfo.o
 TCMODULES += m_bpf.o
 TCMODULES += m_tunnel_key.o
 TCMODULES += m_sample.o
+TCMODULES += m_ct.o
+TCMODULES += m_gate.o
 TCMODULES += p_ip.o
 TCMODULES += p_ip6.o
 TCMODULES += p_icmp.o
@@ -67,6 +71,7 @@ TCMODULES += q_codel.o
 TCMODULES += q_fq_codel.o
 TCMODULES += q_fq.o
 TCMODULES += q_pie.o
+TCMODULES += q_fq_pie.o
 TCMODULES += q_cake.o
 TCMODULES += q_hhf.o
 TCMODULES += q_clsact.o
@@ -74,6 +79,9 @@ TCMODULES += e_bpf.o
 TCMODULES += f_matchall.o
 TCMODULES += q_cbs.o
 TCMODULES += q_etf.o
+TCMODULES += q_taprio.o
+TCMODULES += q_plug.o
+TCMODULES += q_ets.o
 
 TCSO :=
 ifeq ($(TC_CONFIG_ATM),y)
@@ -114,20 +122,20 @@ TCLIB += tc_red.o
 TCLIB += tc_cbq.o
 TCLIB += tc_estimator.o
 TCLIB += tc_stab.o
+TCLIB += tc_qevent.o
 
 CFLAGS += -DCONFIG_GACT -DCONFIG_GACT_PROB
 ifneq ($(IPT_LIB_DIR),)
 	CFLAGS += -DIPT_LIB_DIR=\"$(IPT_LIB_DIR)\"
 endif
 
-YACC := bison
 LEX := flex
 CFLAGS += -DYY_NO_INPUT
 
 MODDESTDIR := $(DESTDIR)$(LIBDIR)/tc
 
 %.so: %.c
-	$(QUIET_CC)$(CC) $(CFLAGS) $(LDFLAGS) -shared -fpic $< -o $@
+	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -shared -fpic $< -o $@
 
 
 all: tc $(TCSO)
@@ -153,28 +161,28 @@ install: all
 	fi
 
 clean:
-	rm -f $(TCOBJ) $(TCLIB) libtc.a tc *.so emp_ematch.yacc.h; \
-	rm -f emp_ematch.yacc.*
+	rm -f $(TCOBJ) $(TCLIB) libtc.a tc *.so emp_ematch.tab.h; \
+	rm -f emp_ematch.tab.*
 
 q_atm.so: q_atm.c
-	$(QUIET_CC)$(CC) $(CFLAGS) $(LDFLAGS) -shared -fpic -o q_atm.so q_atm.c -latm
+	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -shared -fpic -o q_atm.so q_atm.c -latm
 
 m_xt.so: m_xt.c
-	$(QUIET_CC)$(CC) $(CFLAGS) $(LDFLAGS) -shared -fpic -o m_xt.so m_xt.c $$($(PKG_CONFIG) xtables --cflags --libs)
+	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -shared -fpic -o m_xt.so m_xt.c $$($(PKG_CONFIG) xtables --cflags --libs)
 
 m_xt_old.so: m_xt_old.c
-	$(QUIET_CC)$(CC) $(CFLAGS) $(LDFLAGS) -shared -fpic -o m_xt_old.so m_xt_old.c $$($(PKG_CONFIG) xtables --cflags --libs)
+	$(QUIET_CC)$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -shared -fpic -o m_xt_old.so m_xt_old.c $$($(PKG_CONFIG) xtables --cflags --libs)
 
 em_ipset.o: CFLAGS += $$($(PKG_CONFIG) xtables --cflags)
 
 em_ipt.o: CFLAGS += $$($(PKG_CONFIG) xtables --cflags)
 
 ifeq ($(TC_CONFIG_XT),y)
-  LDFLAGS += $$($(PKG_CONFIG) xtables --libs)
+  LDLIBS += $$($(PKG_CONFIG) xtables --libs)
 endif
 
-%.yacc.c: %.y
-	$(QUIET_YACC)$(YACC) $(YACCFLAGS) -o $@ $<
+%.tab.c: %.y
+	$(QUIET_YACC)$(YACC) $(YACCFLAGS) -p ematch_ -b $(basename $(basename $@)) $<
 
 %.lex.c: %.l
 	$(QUIET_LEX)$(LEX) $(LEXFLAGS) -o$@ $<
@@ -182,7 +190,7 @@ endif
 # our lexer includes the header from yacc, so make sure
 # we don't attempt to compile it before the header has
 # been generated as part of the yacc step.
-emp_ematch.lex.o: emp_ematch.yacc.c
+emp_ematch.lex.o: emp_ematch.tab.c
 
 ifneq ($(SHARED_LIBS),y)
 

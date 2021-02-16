@@ -17,7 +17,7 @@
 
 #include "cmdl.h"
 
-const struct cmd *find_cmd(const struct cmd *cmds, char *str)
+static const struct cmd *find_cmd(const struct cmd *cmds, char *str)
 {
 	const struct cmd *c;
 	const struct cmd *match = NULL;
@@ -33,7 +33,7 @@ const struct cmd *find_cmd(const struct cmd *cmds, char *str)
 	return match;
 }
 
-static struct opt *find_opt(struct opt *opts, char *str)
+struct opt *find_opt(struct opt *opts, char *str)
 {
 	struct opt *o;
 	struct opt *match = NULL;

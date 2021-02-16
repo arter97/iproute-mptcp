@@ -46,6 +46,7 @@ struct opt {
 	char *val;
 };
 
+struct opt *find_opt(struct opt *opts, char *str);
 struct opt *get_opt(struct opt *opts, char *key);
 bool has_opt(struct opt *opts, char *key);
 int parse_opts(struct opt *opts, struct cmdl *cmdl);
@@ -53,7 +54,5 @@ char *shift_cmdl(struct cmdl *cmdl);
 
 int run_cmd(struct nlmsghdr *nlh, const struct cmd *caller,
 	    const struct cmd *cmds, struct cmdl *cmdl, void *data);
-
-const struct cmd *find_cmd(const struct cmd *cmds, char *str);
 
 #endif

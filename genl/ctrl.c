@@ -28,85 +28,16 @@
 static int usage(void)
 {
 	fprintf(stderr,"Usage: ctrl <CMD>\n" \
-		       "CMD   := get <PARMS> | list | monitor\n" \
+		       "CMD   := get <PARMS> | list | monitor | policy <PARMS>\n" \
 		       "PARMS := name <name> | id <id>\n" \
 		       "Examples:\n" \
 		       "\tctrl ls\n" \
 		       "\tctrl monitor\n" \
 		       "\tctrl get name foobar\n" \
-		       "\tctrl get id 0xF\n");
+		       "\tctrl get id 0xF\n"
+		       "\tctrl policy name foobar\n"
+		       "\tctrl policy id 0xF\n");
 	return -1;
-}
-
-int genl_ctrl_resolve_family(const char *family)
-{
-	struct rtnl_handle rth;
-	int ret = 0;
-	struct {
-		struct nlmsghdr         n;
-		struct genlmsghdr	g;
-		char                    buf[4096];
-	} req = {
-		.n.nlmsg_len = NLMSG_LENGTH(GENL_HDRLEN),
-		.n.nlmsg_flags = NLM_F_REQUEST | NLM_F_ACK,
-		.n.nlmsg_type = GENL_ID_CTRL,
-		.g.cmd = CTRL_CMD_GETFAMILY,
-	};
-	struct nlmsghdr *nlh = &req.n;
-	struct genlmsghdr *ghdr = &req.g;
-	struct nlmsghdr *answer = NULL;
-
-	if (rtnl_open_byproto(&rth, 0, NETLINK_GENERIC) < 0) {
-		fprintf(stderr, "Cannot open generic netlink socket\n");
-		exit(1);
-	}
-
-	addattr_l(nlh, 128, CTRL_ATTR_FAMILY_NAME, family, strlen(family) + 1);
-
-	if (rtnl_talk(&rth, nlh, &answer) < 0) {
-		fprintf(stderr, "Error talking to the kernel\n");
-		goto errout;
-	}
-
-	{
-		struct rtattr *tb[CTRL_ATTR_MAX + 1];
-		int len = answer->nlmsg_len;
-		struct rtattr *attrs;
-
-		if (answer->nlmsg_type !=  GENL_ID_CTRL) {
-			fprintf(stderr, "Not a controller message, nlmsg_len=%d "
-				"nlmsg_type=0x%x\n", answer->nlmsg_len, answer->nlmsg_type);
-			goto errout;
-		}
-
-		if (ghdr->cmd != CTRL_CMD_NEWFAMILY) {
-			fprintf(stderr, "Unknown controller command %d\n", ghdr->cmd);
-			goto errout;
-		}
-
-		len -= NLMSG_LENGTH(GENL_HDRLEN);
-
-		if (len < 0) {
-			fprintf(stderr, "wrong controller message len %d\n", len);
-			free(answer);
-			return -1;
-		}
-
-		attrs = (struct rtattr *) ((char *) answer + NLMSG_LENGTH(GENL_HDRLEN));
-		parse_rtattr(tb, CTRL_ATTR_MAX, attrs, len);
-
-		if (tb[CTRL_ATTR_FAMILY_ID] == NULL) {
-			fprintf(stderr, "Missing family id TLV\n");
-			goto errout;
-		}
-
-		ret = rta_getattr_u16(tb[CTRL_ATTR_FAMILY_ID]);
-	}
-
-errout:
-	free(answer);
-	rtnl_close(&rth);
-	return ret;
 }
 
 static void print_ctrl_cmd_flags(FILE *fp, __u32 fl)
@@ -174,8 +105,7 @@ static int print_ctrl_grp(FILE *fp, struct rtattr *arg, __u32 ctrl_ver)
 /*
  * The controller sends one nlmsg per family
 */
-static int print_ctrl(const struct sockaddr_nl *who,
-		      struct rtnl_ctrl_data *ctrl,
+static int print_ctrl(struct rtnl_ctrl_data *ctrl,
 		      struct nlmsghdr *n, void *arg)
 {
 	struct rtattr *tb[CTRL_ATTR_MAX + 1];
@@ -195,7 +125,8 @@ static int print_ctrl(const struct sockaddr_nl *who,
 	    ghdr->cmd != CTRL_CMD_DELFAMILY &&
 	    ghdr->cmd != CTRL_CMD_NEWFAMILY &&
 	    ghdr->cmd != CTRL_CMD_NEWMCAST_GRP &&
-	    ghdr->cmd != CTRL_CMD_DELMCAST_GRP) {
+	    ghdr->cmd != CTRL_CMD_DELMCAST_GRP &&
+	    ghdr->cmd != CTRL_CMD_GETPOLICY) {
 		fprintf(stderr, "Unknown controller command %d\n", ghdr->cmd);
 		return 0;
 	}
@@ -208,7 +139,7 @@ static int print_ctrl(const struct sockaddr_nl *who,
 	}
 
 	attrs = (struct rtattr *) ((char *) ghdr + GENL_HDRLEN);
-	parse_rtattr(tb, CTRL_ATTR_MAX, attrs, len);
+	parse_rtattr_flags(tb, CTRL_ATTR_MAX, attrs, len, NLA_F_NESTED);
 
 	if (tb[CTRL_ATTR_FAMILY_NAME]) {
 		char *name = RTA_DATA(tb[CTRL_ATTR_FAMILY_NAME]);
@@ -231,6 +162,36 @@ static int print_ctrl(const struct sockaddr_nl *who,
 		__u32 *ma = RTA_DATA(tb[CTRL_ATTR_MAXATTR]);
 		fprintf(fp, " max attribs: %d ",*ma);
 	}
+	if (tb[CTRL_ATTR_OP_POLICY]) {
+		const struct rtattr *pos;
+
+		rtattr_for_each_nested(pos, tb[CTRL_ATTR_OP_POLICY]) {
+			struct rtattr *ptb[CTRL_ATTR_POLICY_DUMP_MAX + 1];
+			struct rtattr *pattrs = RTA_DATA(pos);
+			int plen = RTA_PAYLOAD(pos);
+
+			parse_rtattr_flags(ptb, CTRL_ATTR_POLICY_DUMP_MAX,
+					   pattrs, plen, NLA_F_NESTED);
+
+			fprintf(fp, " op %d policies:",
+				pos->rta_type & ~NLA_F_NESTED);
+
+			if (ptb[CTRL_ATTR_POLICY_DO]) {
+				__u32 *v = RTA_DATA(ptb[CTRL_ATTR_POLICY_DO]);
+
+				fprintf(fp, " do=%d", *v);
+			}
+
+			if (ptb[CTRL_ATTR_POLICY_DUMP]) {
+				__u32 *v = RTA_DATA(ptb[CTRL_ATTR_POLICY_DUMP]);
+
+				fprintf(fp, " dump=%d", *v);
+			}
+		}
+	}
+	if (tb[CTRL_ATTR_POLICY])
+		nl_print_policy(tb[CTRL_ATTR_POLICY], fp);
+
 	/* end of family definitions .. */
 	fprintf(fp,"\n");
 	if (tb[CTRL_ATTR_OPS]) {
@@ -279,10 +240,9 @@ static int print_ctrl(const struct sockaddr_nl *who,
 	return 0;
 }
 
-static int print_ctrl2(const struct sockaddr_nl *who,
-		      struct nlmsghdr *n, void *arg)
+static int print_ctrl2(struct nlmsghdr *n, void *arg)
 {
-	return print_ctrl(who, NULL, n, arg);
+	return print_ctrl(NULL, n, arg);
 }
 
 static int ctrl_list(int cmd, int argc, char **argv)
@@ -308,7 +268,9 @@ static int ctrl_list(int cmd, int argc, char **argv)
 		exit(1);
 	}
 
-	if (cmd == CTRL_CMD_GETFAMILY) {
+	if (cmd == CTRL_CMD_GETFAMILY || cmd == CTRL_CMD_GETPOLICY) {
+		req.g.cmd = cmd;
+
 		if (argc != 2) {
 			fprintf(stderr, "Wrong number of params\n");
 			return -1;
@@ -333,20 +295,22 @@ static int ctrl_list(int cmd, int argc, char **argv)
 			fprintf(stderr, "Wrong params\n");
 			goto ctrl_done;
 		}
+	}
 
+	if (cmd == CTRL_CMD_GETFAMILY) {
 		if (rtnl_talk(&rth, nlh, &answer) < 0) {
 			fprintf(stderr, "Error talking to the kernel\n");
 			goto ctrl_done;
 		}
 
-		if (print_ctrl2(NULL, answer, (void *) stdout) < 0) {
+		if (print_ctrl2(answer, (void *) stdout) < 0) {
 			fprintf(stderr, "Dump terminated\n");
 			goto ctrl_done;
 		}
 
 	}
 
-	if (cmd == CTRL_CMD_UNSPEC) {
+	if (cmd == CTRL_CMD_UNSPEC || cmd == CTRL_CMD_GETPOLICY) {
 		nlh->nlmsg_flags = NLM_F_ROOT|NLM_F_MATCH|NLM_F_REQUEST;
 		nlh->nlmsg_seq = rth.dump = ++rth.seq;
 
@@ -397,6 +361,8 @@ static int parse_ctrl(struct genl_util *a, int argc, char **argv)
 	    matches(*argv, "show") == 0 ||
 	    matches(*argv, "lst") == 0)
 		return ctrl_list(CTRL_CMD_UNSPEC, argc-1, argv+1);
+	if (matches(*argv, "policy") == 0)
+		return ctrl_list(CTRL_CMD_GETPOLICY, argc-1, argv+1);
 	if (matches(*argv, "help") == 0)
 		return usage();
 

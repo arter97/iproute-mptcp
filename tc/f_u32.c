@@ -1110,7 +1110,7 @@ static int u32_parse_opt(struct filter_util *qu, char *handle,
 				}
 				NEXT_ARG();
 			}
-			hash = sel2.sel.keys[0].val & sel2.sel.keys[0].mask;
+			hash = sel2.keys[0].val & sel2.keys[0].mask;
 			hash ^= hash >> 16;
 			hash ^= hash >> 8;
 			htid = ((hash % divisor) << 12) | (htid & 0xFFF00000);
@@ -1147,13 +1147,9 @@ static int u32_parse_opt(struct filter_util *qu, char *handle,
 			terminal_ok++;
 			continue;
 		} else if (strcmp(*argv, "skip_hw") == 0) {
-			NEXT_ARG();
 			flags |= TCA_CLS_FLAGS_SKIP_HW;
-			continue;
 		} else if (strcmp(*argv, "skip_sw") == 0) {
-			NEXT_ARG();
 			flags |= TCA_CLS_FLAGS_SKIP_SW;
-			continue;
 		} else if (strcmp(*argv, "help") == 0) {
 			explain();
 			return -1;

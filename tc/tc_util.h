@@ -5,6 +5,7 @@
 #define MAX_MSG 16384
 #include <limits.h>
 #include <linux/if.h>
+#include <stdbool.h>
 
 #include <linux/pkt_sched.h>
 #include <linux/pkt_cls.h>
@@ -40,6 +41,7 @@ struct qdisc_util {
 	int (*parse_copt)(struct qdisc_util *qu, int argc,
 			  char **argv, struct nlmsghdr *n, const char *dev);
 	int (*print_copt)(struct qdisc_util *qu, FILE *f, struct rtattr *opt);
+	int (*has_block)(struct qdisc_util *qu, struct rtattr *opt, __u32 block_idx, bool *p_has);
 };
 
 extern __u16 f_proto;
@@ -73,7 +75,6 @@ const char *get_tc_lib(void);
 struct qdisc_util *get_qdisc_kind(const char *str);
 struct filter_util *get_filter_kind(const char *str);
 
-int parse_percent_rate(char *rate, const char *str, const char *dev);
 int get_qdisc_handle(__u32 *h, const char *str);
 int get_rate(unsigned int *rate, const char *str);
 int get_percent_rate(unsigned int *rate, const char *str, const char *dev);
@@ -81,21 +82,14 @@ int get_rate64(__u64 *rate, const char *str);
 int get_percent_rate64(__u64 *rate, const char *str, const char *dev);
 int get_size(unsigned int *size, const char *str);
 int get_size_and_cell(unsigned int *size, int *cell_log, char *str);
-int get_time(unsigned int *time, const char *str);
 int get_linklayer(unsigned int *val, const char *arg);
 
 void print_rate(char *buf, int len, __u64 rate);
-void print_size(char *buf, int len, __u32 size);
-void print_qdisc_handle(char *buf, int len, __u32 h);
-void print_time(char *buf, int len, __u32 time);
-void print_linklayer(char *buf, int len, unsigned int linklayer);
 void print_devname(enum output_type type, int ifindex);
 
 char *sprint_rate(__u64 rate, char *buf);
 char *sprint_size(__u32 size, char *buf);
-char *sprint_qdisc_handle(__u32 h, char *buf);
 char *sprint_tc_classid(__u32 h, char *buf);
-char *sprint_time(__u32 time, char *buf);
 char *sprint_ticks(__u32 ticks, char *buf);
 char *sprint_linklayer(unsigned int linklayer, char *buf);
 
@@ -109,6 +103,7 @@ int print_tc_classid(char *buf, int len, __u32 h);
 char *sprint_tc_classid(__u32 h, char *buf);
 
 int tc_print_police(FILE *f, struct rtattr *tb);
+int parse_percent(double *val, const char *str);
 int parse_police(int *argc_p, char ***argv_p, int tca_id, struct nlmsghdr *n);
 
 int parse_action_control(int *argc_p, char ***argv_p,
@@ -120,9 +115,6 @@ int parse_action_control_slash(int *argc_p, char ***argv_p,
 			       int *result1_p, int *result2_p, bool allow_num);
 void print_action_control(FILE *f, const char *prefix,
 			  int action, const char *suffix);
-int act_parse_police(struct action_util *a, int *argc_p,
-		     char ***argv_p, int tca_id, struct nlmsghdr *n);
-int print_police(struct action_util *a, FILE *f, struct rtattr *tb);
 int police_print_xstats(struct action_util *a, FILE *f, struct rtattr *tb);
 int tc_print_action(FILE *f, const struct rtattr *tb, unsigned short tot_acts);
 int tc_print_ipt(FILE *f, const struct rtattr *tb);
@@ -137,4 +129,12 @@ int action_a2n(char *arg, int *result, bool allow_num);
 
 bool tc_qdisc_block_exists(__u32 block_index);
 
+void print_masked_u32(const char *name, struct rtattr *attr,
+		      struct rtattr *mask_attr, bool newline);
+void print_masked_u16(const char *name, struct rtattr *attr,
+		      struct rtattr *mask_attr, bool newline);
+void print_masked_u8(const char *name, struct rtattr *attr,
+		     struct rtattr *mask_attr, bool newline);
+void print_masked_be16(const char *name, struct rtattr *attr,
+		       struct rtattr *mask_attr, bool newline);
 #endif

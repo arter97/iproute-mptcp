@@ -23,7 +23,9 @@ ip-neighbour \- neighbour/arp tables management.
 .B proxy
 .IR ADDR " } [ "
 .B  dev
-.IR DEV " ]"
+.IR DEV " ] [ "
+.BR router " ] [ "
+.BR extern_learn " ]"
 
 .ti -8
 .BR "ip neigh" " { " show " | " flush " } [ " proxy " ] [ " to
@@ -34,6 +36,12 @@ ip-neighbour \- neighbour/arp tables management.
 .IR STATE " ] [ "
 .B  vrf
 .IR NAME " ] "
+
+.ti -8
+.B ip neigh get
+.IR ADDR
+.B  dev
+.IR DEV
 
 .ti -8
 .IR STATE " := {"
@@ -74,6 +82,20 @@ the protocol address of the neighbour. It is either an IPv4 or IPv6 address.
 .TP
 .BI dev " NAME"
 the interface to which this neighbour is attached.
+
+.TP
+.BI proxy
+indicates whether we are proxying for this neighbour entry
+
+.TP
+.BI router
+indicates whether neighbour is a router
+
+.TP
+.BI extern_learn
+this neigh entry was learned externally. This option can be used to
+indicate to the kernel that this is a controller learnt dynamic entry.
+Kernel will not gc such an entry.
 
 .TP
 .BI lladdr " LLADDRESS"
@@ -215,6 +237,24 @@ twice,
 also dumps all the deleted neighbours.
 .RE
 
+.TP
+ip neigh get
+lookup a neighbour entry to a destination given a device
+.RS
+
+.TP
+.BI proxy
+indicates whether we should lookup a proxy neighbour entry
+
+.TP
+.BI to " ADDRESS " (default)
+the prefix selecting the neighbour to query.
+
+.TP
+.BI dev " NAME"
+get neighbour entry attached to this device.
+.RE
+
 .SH EXAMPLES
 .PP
 ip neighbour
@@ -225,6 +265,12 @@ Shows the current neighbour table in kernel.
 ip neigh flush dev eth0
 .RS
 Removes entries in the neighbour table on device eth0.
+.RE
+.PP
+ip neigh get 10.0.1.10 dev eth0
+.RS
+Performs a neighbour lookup in the kernel and returns
+a neighbour entry.
 .RE
 
 .SH SEE ALSO

@@ -22,7 +22,7 @@
 #include <errno.h>
 #include <linux/netlink.h>
 #include <linux/rtnetlink.h> /* until we put our own header */
-#include "SNAPSHOT.h"
+#include "version.h"
 #include "utils.h"
 #include "genl_utils.h"
 
@@ -34,8 +34,7 @@ static void *BODY;
 static struct genl_util *genl_list;
 
 
-static int print_nofopt(const struct sockaddr_nl *who, struct nlmsghdr *n,
-			void *arg)
+static int print_nofopt(struct nlmsghdr *n, void *arg)
 {
 	fprintf((FILE *) arg, "unknown genl type ..\n");
 	return 0;
@@ -119,7 +118,7 @@ int main(int argc, char **argv)
 		} else if (matches(argv[1], "-raw") == 0) {
 			++show_raw;
 		} else if (matches(argv[1], "-Version") == 0) {
-			printf("genl utility, iproute2-ss%s\n", SNAPSHOT);
+			printf("genl utility, iproute2-%s\n", version);
 			exit(0);
 		} else if (matches(argv[1], "-help") == 0) {
 			usage();

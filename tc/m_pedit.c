@@ -34,8 +34,8 @@ static int pedit_debug;
 
 static void explain(void)
 {
-	fprintf(stderr, "Usage: ... pedit munge [ex] <MUNGE> [CONTROL]\n");
 	fprintf(stderr,
+		"Usage: ... pedit munge [ex] <MUNGE> [CONTROL]\n"
 		"Where: MUNGE := <RAW>|<LAYERED>\n"
 		"\t<RAW>:= <OFFSETC>[ATC]<CMD>\n \t\tOFFSETC:= offset <offval> <u8|u16|u32>\n"
 		"\t\tATC:= at <atval> offmask <maskval> shift <shiftval>\n"
@@ -118,7 +118,7 @@ noexist:
 	return p;
 }
 
-int pack_key(struct m_pedit_sel *_sel, struct m_pedit_key *tkey)
+static int pack_key(struct m_pedit_sel *_sel, struct m_pedit_key *tkey)
 {
 	struct tc_pedit_sel *sel = &_sel->sel;
 	struct m_pedit_key_ex *keys_ex = _sel->keys_ex;
@@ -155,8 +155,8 @@ int pack_key(struct m_pedit_sel *_sel, struct m_pedit_key *tkey)
 	return 0;
 }
 
-int pack_key32(__u32 retain, struct m_pedit_sel *sel,
-	       struct m_pedit_key *tkey)
+static int pack_key32(__u32 retain, struct m_pedit_sel *sel,
+		      struct m_pedit_key *tkey)
 {
 	if (tkey->off > (tkey->off & ~3)) {
 		fprintf(stderr,
@@ -169,8 +169,8 @@ int pack_key32(__u32 retain, struct m_pedit_sel *sel,
 	return pack_key(sel, tkey);
 }
 
-int pack_key16(__u32 retain, struct m_pedit_sel *sel,
-	       struct m_pedit_key *tkey)
+static int pack_key16(__u32 retain, struct m_pedit_sel *sel,
+		      struct m_pedit_key *tkey)
 {
 	int ind, stride;
 	__u32 m[4] = { 0x0000FFFF, 0xFF0000FF, 0xFFFF0000 };
@@ -197,10 +197,10 @@ int pack_key16(__u32 retain, struct m_pedit_sel *sel,
 		printf("pack_key16: Final val %08x mask %08x\n",
 		       tkey->val, tkey->mask);
 	return pack_key(sel, tkey);
-
 }
 
-int pack_key8(__u32 retain, struct m_pedit_sel *sel, struct m_pedit_key *tkey)
+static int pack_key8(__u32 retain, struct m_pedit_sel *sel,
+		     struct m_pedit_key *tkey)
 {
 	int ind, stride;
 	__u32 m[4] = { 0x00FFFFFF, 0xFF00FFFF, 0xFFFF00FF, 0xFFFFFF00 };
@@ -283,7 +283,7 @@ static int pack_ipv6(struct m_pedit_sel *sel, struct m_pedit_key *tkey,
 	return 0;
 }
 
-int parse_val(int *argc_p, char ***argv_p, __u32 *val, int type)
+static int parse_val(int *argc_p, char ***argv_p, __u32 *val, int type)
 {
 	int argc = *argc_p;
 	char **argv = *argv_p;
@@ -433,8 +433,8 @@ done:
 
 }
 
-int parse_offset(int *argc_p, char ***argv_p, struct m_pedit_sel *sel,
-		 struct m_pedit_key *tkey)
+static int parse_offset(int *argc_p, char ***argv_p, struct m_pedit_sel *sel,
+			struct m_pedit_key *tkey)
 {
 	int off;
 	__u32 len, retain;
@@ -612,8 +612,8 @@ static int pedit_keys_ex_addattr(struct m_pedit_sel *sel, struct nlmsghdr *n)
 	return 0;
 }
 
-int parse_pedit(struct action_util *a, int *argc_p, char ***argv_p, int tca_id,
-		struct nlmsghdr *n)
+static int parse_pedit(struct action_util *a, int *argc_p, char ***argv_p,
+		       int tca_id, struct nlmsghdr *n)
 {
 	struct m_pedit_sel sel = {};
 
@@ -705,7 +705,7 @@ int parse_pedit(struct action_util *a, int *argc_p, char ***argv_p, int tca_id,
 	return 0;
 }
 
-const char *pedit_htype_str[] = {
+static const char * const pedit_htype_str[] = {
 	[TCA_PEDIT_KEY_EX_HDR_TYPE_NETWORK] = "",
 	[TCA_PEDIT_KEY_EX_HDR_TYPE_ETH] = "eth",
 	[TCA_PEDIT_KEY_EX_HDR_TYPE_IP4] = "ipv4",
@@ -714,27 +714,36 @@ const char *pedit_htype_str[] = {
 	[TCA_PEDIT_KEY_EX_HDR_TYPE_UDP] = "udp",
 };
 
-static void print_pedit_location(FILE *f,
-				 enum pedit_header_type htype, __u32 off)
+static int print_pedit_location(FILE *f,
+				enum pedit_header_type htype, __u32 off)
 {
-	if (htype == TCA_PEDIT_KEY_EX_HDR_TYPE_NETWORK) {
-		fprintf(f, "%d", (unsigned int)off);
-		return;
+	char *buf = NULL;
+	int rc;
+
+	if (htype != TCA_PEDIT_KEY_EX_HDR_TYPE_NETWORK) {
+		if (htype < ARRAY_SIZE(pedit_htype_str))
+			rc = asprintf(&buf, "%s", pedit_htype_str[htype]);
+		else
+			rc = asprintf(&buf, "unknown(%d)", htype);
+		if (rc < 0)
+			return rc;
+		print_string(PRINT_ANY, "htype", "%s", buf);
+		print_int(PRINT_ANY, "offset", "%+d", off);
+	} else {
+		print_string(PRINT_JSON, "htype", NULL, "network");
+		print_int(PRINT_ANY, "offset", "%d", off);
 	}
 
-	if (htype < ARRAY_SIZE(pedit_htype_str))
-		fprintf(f, "%s", pedit_htype_str[htype]);
-	else
-		fprintf(f, "unknown(%d)", htype);
-
-	fprintf(f, "%c%d", (int)off  >= 0 ? '+' : '-', abs((int)off));
+	free(buf);
+	return 0;
 }
 
-int print_pedit(struct action_util *au, FILE *f, struct rtattr *arg)
+static int print_pedit(struct action_util *au, FILE *f, struct rtattr *arg)
 {
 	struct tc_pedit_sel *sel;
 	struct rtattr *tb[TCA_PEDIT_MAX + 1];
 	struct m_pedit_key_ex *keys_ex = NULL;
+	int err;
 
 	if (arg == NULL)
 		return -1;
@@ -742,7 +751,7 @@ int print_pedit(struct action_util *au, FILE *f, struct rtattr *arg)
 	parse_rtattr_nested(tb, TCA_PEDIT_MAX, arg);
 
 	if (!tb[TCA_PEDIT_PARMS] && !tb[TCA_PEDIT_PARMS_EX]) {
-		fprintf(f, "[NULL pedit parameters]");
+		fprintf(stderr, "Missing pedit parameters\n");
 		return -1;
 	}
 
@@ -774,11 +783,12 @@ int print_pedit(struct action_util *au, FILE *f, struct rtattr *arg)
 		}
 	}
 
-	fprintf(f, " pedit ");
+	print_string(PRINT_ANY, "kind", " %s ", "pedit");
 	print_action_control(f, "action ", sel->action, " ");
-	fprintf(f,"keys %d\n ", sel->nkeys);
-	fprintf(f, "\t index %u ref %d bind %d", sel->index, sel->refcnt,
-		sel->bindcnt);
+	print_uint(PRINT_ANY, "nkeys", "keys %d\n", sel->nkeys);
+	print_uint(PRINT_ANY, "index", " \t index %u", sel->index);
+	print_int(PRINT_ANY, "ref", " ref %d", sel->refcnt);
+	print_int(PRINT_ANY, "bind", " bind %d", sel->bindcnt);
 
 	if (show_stats) {
 		if (tb[TCA_PEDIT_TM]) {
@@ -787,6 +797,7 @@ int print_pedit(struct action_util *au, FILE *f, struct rtattr *arg)
 			print_tm(f, tm);
 		}
 	}
+	open_json_array(PRINT_JSON, "keys");
 	if (sel->nkeys) {
 		int i;
 		struct tc_pedit_key *key = sel->keys;
@@ -804,30 +815,37 @@ int print_pedit(struct action_util *au, FILE *f, struct rtattr *arg)
 				key_ex++;
 			}
 
-			fprintf(f, "\n\t key #%d", i);
+			open_json_object(NULL);
+			print_uint(PRINT_FP, NULL, "\n\t key #%d  at ", i);
 
-			fprintf(f, "  at ");
+			err = print_pedit_location(f, htype, key->off);
+			if (err) {
+				free(keys_ex);
+				return err;
+			}
 
-			print_pedit_location(f, htype, key->off);
-
-			fprintf(f, ": %s %08x mask %08x",
-				cmd ? "add" : "val",
-				(unsigned int)ntohl(key->val),
-				(unsigned int)ntohl(key->mask));
+			/* In FP, report the "set" command as "val" to keep
+			 * backward compatibility. Report the true name in JSON.
+			 */
+			print_string(PRINT_FP, NULL, ": %s",
+				     cmd ? "add" : "val");
+			print_string(PRINT_JSON, "cmd", NULL,
+				     cmd ? "add" : "set");
+			print_hex(PRINT_ANY, "val", " %08x",
+				  (unsigned int)ntohl(key->val));
+			print_hex(PRINT_ANY, "mask", " mask %08x",
+				  (unsigned int)ntohl(key->mask));
+			close_json_object();
 		}
 	} else {
 		fprintf(f, "\npedit %x keys %d is not LEGIT", sel->index,
 			sel->nkeys);
 	}
+	close_json_array(PRINT_JSON, " ");
 
-	fprintf(f, "\n ");
+	print_nl();
 
 	free(keys_ex);
-	return 0;
-}
-
-int pedit_print_xstats(struct action_util *au, FILE *f, struct rtattr *xstats)
-{
 	return 0;
 }
 

@@ -33,7 +33,7 @@
 
 #include "libnetlink.h"
 #include "json_writer.h"
-#include "SNAPSHOT.h"
+#include "version.h"
 #include "utils.h"
 
 int dump_zeros;
@@ -104,14 +104,13 @@ static int match(const char *id)
 		return 1;
 
 	for (i = 0; i < npatterns; i++) {
-		if (!fnmatch(patterns[i], id, 0))
+		if (!fnmatch(patterns[i], id, FNM_CASEFOLD))
 			return 1;
 	}
 	return 0;
 }
 
-static int get_nlmsg_extended(const struct sockaddr_nl *who,
-			      struct nlmsghdr *m, void *arg)
+static int get_nlmsg_extended(struct nlmsghdr *m, void *arg)
 {
 	struct if_stats_msg *ifsm = NLMSG_DATA(m);
 	struct rtattr *tb[IFLA_STATS_MAX+1];
@@ -154,8 +153,7 @@ static int get_nlmsg_extended(const struct sockaddr_nl *who,
 	return 0;
 }
 
-static int get_nlmsg(const struct sockaddr_nl *who,
-		     struct nlmsghdr *m, void *arg)
+static int get_nlmsg(struct nlmsghdr *m, void *arg)
 {
 	struct ifinfomsg *ifi = NLMSG_DATA(m);
 	struct rtattr *tb[IFLA_MAX+1];
@@ -203,8 +201,8 @@ static void load_info(void)
 	if (is_extended) {
 		ll_init_map(&rth);
 		filter_mask = IFLA_STATS_FILTER_BIT(filter_type);
-		if (rtnl_wilddump_stats_req_filter(&rth, AF_UNSPEC, RTM_GETSTATS,
-						   filter_mask) < 0) {
+		if (rtnl_statsdump_req_filter(&rth, AF_UNSPEC,
+					      filter_mask) < 0) {
 			perror("Cannot send dump request");
 			exit(1);
 		}
@@ -214,7 +212,7 @@ static void load_info(void)
 			exit(1);
 		}
 	} else {
-		if (rtnl_wilddump_request(&rth, AF_INET, RTM_GETLINK) < 0) {
+		if (rtnl_linkdump_req(&rth, AF_INET) < 0) {
 			perror("Cannot send dump request");
 			exit(1);
 		}
@@ -253,7 +251,7 @@ static void load_raw_table(FILE *fp)
 			buf[strlen(buf)-1] = 0;
 			if (info_source[0] && strcmp(info_source, buf+1))
 				source_mismatch = 1;
-			strncpy(info_source, buf+1, sizeof(info_source)-1);
+			strlcpy(info_source, buf+1, sizeof(info_source));
 			continue;
 		}
 		if ((n = malloc(sizeof(*n))) == NULL)
@@ -871,7 +869,7 @@ int main(int argc, char *argv[])
 			break;
 		case 'v':
 		case 'V':
-			printf("ifstat utility, iproute2-ss%s\n", SNAPSHOT);
+			printf("ifstat utility, iproute2-%s\n", version);
 			exit(0);
 		case 'h':
 		case '?':
